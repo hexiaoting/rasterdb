@@ -1,9 +1,13 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include "loader/rasterdb_config.h"
-#include "loader/load-raster.h"
+
+#include "rasterdb_config.h"
+#include "load_raster.h"
+
 #include "postgres.h"
 #include "utils/builtins.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+
 
 void usage();
 

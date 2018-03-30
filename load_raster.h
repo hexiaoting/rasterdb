@@ -4,11 +4,15 @@
 
 #ifndef RASTERDB_LOAD_RASTER_H
 #define RASTERDB_LOAD_RASTER_H
-#include <stdlib.h>
+
 #include "rasterdb_config.h"
-#include "../core/rt_context.h"
-#include "../core/librtcore.h"
+#include "rt_context.h"
+#include "librtcore.h"
+
 #include "gdal.h"
+
+#include <stdlib.h>
+
 
 typedef struct stringbuffer_t {
     uint32_t length;

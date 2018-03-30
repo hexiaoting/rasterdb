@@ -1,18 +1,17 @@
-MODULE=rasterdb
+# rasterdb/Makefile
+#
+# Copyright (c) 2018 Institute of Computing Technology, Chinese Academy of Sciences
+#
+
 MODULE_big=rasterdb
-SUBDIRS = loader core extensions
-SHLIB_LINK=-lgdal -lrtpostgis
-override CFLAGS=
-override LDFLAGS = -L$(libdir)
+SHLIB_LINK= -L/home/gpadmin/dev/lib/postgresql -lgdal -lrtpostgis
 
-SRC = core/rt_context.c core/rt_util.c  loader/load-raster.c loader/rasterdb_config.c rasterdb.c
-OBJS = $(SRC:%.c=%.o)
-all: $(OBJS) 
+OBJS = rt_context.o rt_util.o load_raster.o rasterdb_config.o rasterdb.o
 
-install:
-	$(MAKE) install -C extensions
+EXTENSION = rasterdb
+DATA = rasterdb--0.1.sql
 
-#EXTENSION = rasterdb
+
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)

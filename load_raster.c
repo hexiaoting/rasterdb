@@ -1,8 +1,8 @@
 //
 // Created by 何文婷 on 18/3/21.
 //
-#include "load-raster.h"
-//#include "gdal.h"
+#include "load_raster.h"
+
 #include "ogr_srs_api.h"
 //#include "cpl_conv.h" /* for CPLMalloc() */
 #include "gdal_vrt.h"

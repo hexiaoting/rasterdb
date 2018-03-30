@@ -1,7 +1,5 @@
-# rasterdb
-Compile and install:
-	make && make install
+rasterdb
+==============
 
-Usage:
-	psql# create extension rasterdb;
-	psql# select load_raster("/tmp/data.tiff")
+This extension implements a series of functions related to PostGIS raster data, including
+data parsing, loading and analyzing.

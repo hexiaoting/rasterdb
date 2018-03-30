@@ -4,8 +4,11 @@
 
 #ifndef RASTERDB_RASTERDB_CONFIG_H
 #define RASTERDB_RASTERDB_CONFIG_H
+
+#include "rt_context.h"
+
 #include <string.h>
-#include "../core/rt_context.h"
+
 
 #define CSEQUAL(a,b) (strcmp(a,b)==0)
 

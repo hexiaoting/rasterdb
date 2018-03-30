@@ -133,10 +133,10 @@ rt_util_clamp_to_16BSI(double value);
 uint16_t
 rt_util_clamp_to_16BUI(double value);
 
-int32_t
+extern int32_t
 rt_util_clamp_to_32BSI(double value);
 
-uint32_t
+extern uint32_t
 rt_util_clamp_to_32BUI(double value);
 
 float
