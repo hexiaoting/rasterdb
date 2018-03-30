@@ -1,0 +1,73 @@
+# Original Authors: Navneet Potti, Nabarun Nag and Jignesh Patel
+require 'yaml'
+require 'socket'
+
+# IP Address for the private VM network
+ip_address = "192.168.10.203"
+
+# hostname
+hostname = Socket.gethostname
+
+# compile flags
+debug = ENV['debug'] == "false" ? "false" : "true"
+clean = ENV['clean'] == "true" ? "true" : "false"
+
+# {gpdb_roo_dir}/vagrant/
+root = "../.."
+additional_repo = []
+
+# Basic Vagrant config (API version 2)
+Vagrant.configure(2) do |config|
+
+  # Base box: Centos-7 box
+  # NOTE: Over time the VMI below may become outdated, so may need to be
+  #       substituted with a more recent VMI
+  config.vm.box = "boxcutter/centos72"
+
+  # Make this VM reachable on the host network as well, so that other
+  # VM's running other browsers can access our dev server.
+  config.vm.network :private_network, ip: ip_address
+
+  # Give a reasonable amount of cpu and memory to the VM
+  config.vm.provider "virtualbox" do |vb|
+    vb.name = "rasterdb-dev-host" # Name in VirtualBox
+    vb.memory = 4096
+    vb.cpus = 2
+    vb.customize ["guestproperty", "set", :id, "/VirtualBox/GuestAdd/VBoxService/--timesync-set-threshold", "1000"]
+    vb.customize ["guestproperty", "set", :id, "/VirtualBox/GuestAdd/VBoxService/--timesync-set-start"]
+    vb.customize ["guestproperty", "set", :id, "/VirtualBox/GuestAdd/VBoxService/--timesync-set-on-restore", "1"]
+  end
+
+  # Make the GPDB code folder will be visible as /gpdb in the virtual machine
+  config.vm.synced_folder "../.", "/rasterdb", owner: 555, group: 555 
+
+  additional_repo.each do |repo|
+    host_path = File.join(root, repo)
+	vm_path = File.join('/opt/', repo)
+
+    if Dir.exist?(host_path)
+	  config.vm.synced_folder host_path, vm_path, owner: 555, group: 555
+	end
+  end
+
+  if File.file?('vagrant-local.yml')
+    local_config = YAML::load_file('vagrant-local.yml')
+    local_config['synced_folder'].each do |folder|
+      config.vm.synced_folder folder['local'], folder['shared'] unless folder['local'].nil? or folder['shared'].nil?
+    end
+  end
+
+  # config ssh
+  config.vm.provision "ssh", type: "shell", path: "vagrant-ssh.sh"
+
+  # Install packages that are needed to build and run GPDB
+  config.vm.provision "depends", type: "shell", path: "vagrant-setup.sh"
+
+  default_name = "default"
+  # Use the trick to change user gpadmin after "vagratn up"
+  if File.file?('.vagrant/machines/' + default_name + '/virtualbox/id')
+    config.ssh.username = "gpadmin"
+    config.ssh.private_key_path = "./id_ecdsa"
+  end
+
+end
