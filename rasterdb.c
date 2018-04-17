@@ -7,6 +7,7 @@
 #include "utils/builtins.h"
 #include "gdal.h"
 #include "cpl_conv.h"
+#include "access/heapam.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "optimizer/cost.h"
@@ -76,6 +77,9 @@ static HeapTuple
 make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
         MemoryContext temp_context); 
 
+static int
+GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, char **buf);
+
 Datum
 rasterdb_fdw_handler(PG_FUNCTION_ARGS) {
     FdwRoutine *fdwroutine = makeNode(FdwRoutine);
@@ -131,12 +135,11 @@ static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
 static void
 fetch_more_data(ForeignScanState *node) {
     RasterdbFdwExecutionState *festate = (RasterdbFdwExecutionState *) node->fdw_state;
-    festate->tuples = NULL;
     int batchsize = 100;
     int numrows = 0; // fetched rasterdb rows
     int i = 0;
     char **buf = palloc0(sizeof(char *) * batchsize);
-
+    festate->tuples = NULL;
 
     numrows = GetRasterBatch(festate->location, 
                             festate->options, 
@@ -175,7 +178,7 @@ make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
     oldcontext = MemoryContextSwitchTo(temp_context);
 
     values = (Datum *) palloc0(tupledesc->natts * sizeof(Datum));
-    nulls = (Datum *) palloc0(tupledesc->natts * sizeof(bool));
+    nulls = (bool *) palloc0(tupledesc->natts * sizeof(bool));
     memset(nulls, true, tupledesc->natts * sizeof(bool));
     nulls[0] = (str == NULL);
     values[0] = InputFunctionCall(&attinmeta->attinfuncs[0],
@@ -185,7 +188,7 @@ make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
             );
 
     MemoryContextSwitchTo(oldcontext);
-    tuple = heap_form_tuple(tupledesc, values, nulls);
+    tuple = heaptuple_form_to(tupledesc, values, nulls, NULL, NULL);
 
     MemoryContextReset(temp_context);
 
@@ -426,7 +429,7 @@ load_raster(PG_FUNCTION_ARGS) {
     //PG_RETURN_INT32(6);
 }
 
-int
+static int
 GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, char **buf) {
     ListCell *option;
     RTLOADERCFG *config = NULL;

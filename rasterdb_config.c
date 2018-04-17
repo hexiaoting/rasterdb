@@ -43,12 +43,12 @@ set_config(RTLOADERCFG *config) {
     if (f == NULL) {
         elog(ERROR, "open %s failed. errno=%s", conf_file, strerror(errno));
     }
-    while (fgets(buf, MAXSIZE, f) != EOF) {
+    while (fgets(buf, MAXSIZE, f) != NULL) {
         char *p = strchr(buf, ':');
         if (p != NULL && strncmp(buf,"tile_size",strlen("tile_size")) == 0) {
             char *p2 = strchr(p, 'x');
             if (p2 != NULL) {
-                char s1[5],s2[5];
+                char s1[5];
                 strncpy(s1,p+1,p2-p);
                 config->tile_size[0] = atoi(s1);
                 config->tile_size[1] = atoi(p2+1);

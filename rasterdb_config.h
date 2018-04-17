@@ -33,5 +33,6 @@ typedef struct raster_loader_config {
 
 void rtdealloc_config(RTLOADERCFG *config);
 void init_config(RTLOADERCFG *config);
+void set_config(RTLOADERCFG *config);
 
 #endif //RASTERDB_RASTERDB_CONFIG_H
