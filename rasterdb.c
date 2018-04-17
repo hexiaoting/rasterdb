@@ -13,7 +13,6 @@
 #include "foreign/foreign.h"
 #include "optimizer/cost.h"
 #include "optimizer/planmain.h"
-#include "optimizer/pathnode.h"
 #include "foreign/fdwapi.h"
 #include "optimizer/restrictinfo.h"
 #include "executor/executor.h"
@@ -23,6 +22,7 @@
 #include "commands/defrem.h"
 #include "optimizer/pathnode.h"
 #include "access/htup_details.h"
+#include "nodes/pg_list.h"
 
 typedef struct RasterdbFdwPlanState{
     char *location;
@@ -284,7 +284,6 @@ static void rasterdbGetForeignPaths(PlannerInfo *root,
                     &startup_cost, &total_cost);
 
     path = create_foreignscan_path(root, baserel,
-    								   NULL,
                                     baserel->rows,
                                     startup_cost,
                                     total_cost,
@@ -361,6 +360,7 @@ load_raster(PG_FUNCTION_ARGS) {
     const char *loadPath = text_to_cstring(PG_GETARG_TEXT_P(0));
     // path is directory or regular file
     struct stat s_buf;
+    RTLOADERCFG *config = NULL;
 
     //S1: set config
     config = malloc(sizeof(RTLOADERCFG));

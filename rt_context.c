@@ -3,6 +3,12 @@
 //
 
 #include "rt_context.h"
+
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
+
+
 void *
 default_rt_allocator(size_t size)
 {
@@ -150,3 +156,4 @@ rtwarn(const char *fmt, ...) {
 
     va_end(ap);
 }
+#pragma GCC diagnostic pop

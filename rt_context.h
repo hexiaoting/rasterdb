@@ -4,10 +4,9 @@
 
 #ifndef RASTERDB_RT_CONTEXT_H
 #define RASTERDB_RT_CONTEXT_H
-#include "stddef.h"
-#include "stdarg.h"
-#include "stdlib.h"
-#include "stdio.h"
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include "postgres.h"
 #include "utils/builtins.h"
 
