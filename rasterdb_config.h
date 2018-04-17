@@ -15,7 +15,6 @@
 typedef struct raster_loader_config {
     int rt_file_count;
     char **rt_file;
-    char **rt_filename;
     int tile_size[2];
     /* SRID of input raster */
     int srid;
@@ -28,6 +27,8 @@ typedef struct raster_loader_config {
     char *schema;
     char *file_column_name;
     int *nband;
+    int hasnodata;
+    double nodataval;
 }RTLOADERCFG;
 
 void rtdealloc_config(RTLOADERCFG *config);

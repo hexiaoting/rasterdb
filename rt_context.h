@@ -8,6 +8,8 @@
 #include "stdarg.h"
 #include "stdlib.h"
 #include "stdio.h"
+#include "postgres.h"
+#include "utils/builtins.h"
 
 void rterror(const char *fmt, ...);
 void rtinfo(const char *fmt, ...);
