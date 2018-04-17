@@ -18,6 +18,9 @@
 #include "funcapi.h"
 #include "utils/rel.h"
 #include "utils/memutils.h"
+#include "commands/defrem.h"
+#include "optimizer/pathnode.h"
+#include "access/htup_details.h"
 
 typedef struct RasterdbFdwPlanState{
     char *location;
@@ -100,7 +103,7 @@ rasterdb_fdw_handler(PG_FUNCTION_ARGS) {
 Datum
 rasterdb_fdw_validator(PG_FUNCTION_ARGS)
 {
-    
+    PG_RETURN_VOID();
 }
 
 static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
@@ -188,7 +191,7 @@ make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
             );
 
     MemoryContextSwitchTo(oldcontext);
-    tuple = heaptuple_form_to(tupledesc, values, nulls, NULL, NULL);
+    tuple = heap_form_tuple(tupledesc, values, nulls);
 
     MemoryContextReset(temp_context);
 
@@ -285,7 +288,7 @@ static void rasterdbGetForeignPaths(PlannerInfo *root,
                                     NULL,
                                     NULL,
                                     NIL);
-    add_path(baserel, path);
+    add_path(baserel, (Path *)path);
 }
 
 /*
@@ -337,8 +340,8 @@ rasterGetOption(Oid foreigntableid,
 	prev = lc;
     }
 
-    if (*location = NULL)
-	elog(ERROR, "location is required for rasterdb_fdw foreign tables");
+    if (*location == NULL)
+	    elog(ERROR, "location is required for rasterdb_fdw foreign tables");
 
     *other_options = options;
 }
@@ -347,47 +350,28 @@ rasterGetOption(Oid foreigntableid,
 
 
 PG_FUNCTION_INFO_V1(load_raster);
-PG_FUNCTION_INFO_V1(test);
-Datum
-test(PG_FUNCTION_ARGS) {
-    GDALDriverH drv = NULL;
-    char *str = PG_GETARG_CSTRING(0);
-    CPLSetConfigOption( "GDAL_SKIP", "" );
-    GDALAllRegister();
-    drv = GDALIdentifyDriver(str,NULL);
-    if (drv == NULL) {
-        printf("Unable to read raster file: %s", str);
-        elog(ERROR, "Unable to read raster file: %s", str);
-    } else {
-        elog(INFO, "able to read raster file: %s", str);
-    }
-}
-
-
-
 Datum
 load_raster(PG_FUNCTION_ARGS) {
+    struct stat s_buf;  
+    RTLOADERCFG *config = NULL;
     const char *loadPath = text_to_cstring(PG_GETARG_TEXT_P(0));
 
     //S1: set config
-    RTLOADERCFG *config = NULL;
     config = malloc(sizeof(RTLOADERCFG));
     if (config == NULL) {
         exit(1);
     }
 
-    elog(INFO, "--->process config");
     init_config(config);
     set_config(config);
-    elog(INFO, "<---process config");
 
     // path is directory or regular file
-    struct stat s_buf;  
-  
-    /*获取文件信息，把信息放到s_buf中*/  
     stat(loadPath,&s_buf);  
   
-    /*判断输入的文件路径是否目录，若是目录，则往下执行，分析目录下的文件*/  
+    /*
+     * rasterdb-v1: location is a filename in this version
+     * TODO: process dir
+     */
     if(S_ISREG(s_buf.st_mode)) { 
         config->rt_file_count++;
         config->rt_file = (char **) rtrealloc(config->rt_file, sizeof(char *) * config->rt_file_count);
@@ -426,13 +410,14 @@ load_raster(PG_FUNCTION_ARGS) {
      ****************************************************************************/
     //analysis_raster(config);
 //    return 6;
-    //PG_RETURN_INT32(6);
+    PG_RETURN_VOID();
 }
 
 static int
 GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, char **buf) {
     ListCell *option;
     RTLOADERCFG *config = NULL;
+    struct stat s_buf;  
 
 
     //S1: set config
@@ -440,16 +425,15 @@ GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, cha
     if (config == NULL) {
         exit(1);
     }
-
     init_config(config);
 
     // path is directory or regular file
-    struct stat s_buf;  
-  
-    /*获取文件信息，把信息放到s_buf中*/  
     stat(location, &s_buf);  
   
-    /*判断输入的文件路径是否目录，若是目录，则往下执行，分析目录下的文件*/  
+    /*
+     * rasterdb-v1: location is a filename in this version
+     * TODO: process dir
+     */
     if(S_ISREG(s_buf.st_mode)) { 
         config->rt_file_count++;
         config->rt_file = (char **) rtrealloc(config->rt_file, sizeof(char *) * config->rt_file_count);
@@ -497,5 +481,5 @@ GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, cha
         }
     }
     //S3: analysis geotiff data to hexwkb
-    analysis_raster(config, cur_lineno, batchsize, buf);
+    return analysis_raster(config, cur_lineno, batchsize, buf);
 }

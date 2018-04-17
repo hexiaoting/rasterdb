@@ -5,10 +5,6 @@ CREATE OR REPLACE FUNCTION load_raster(path text)
     RETURNS void 
     AS '$libdir/rasterdb','load_raster'
     LANGUAGE 'c' IMMUTABLE STRICT ;
-CREATE OR REPLACE FUNCTION test(cstring)
-        RETURNS void 
-        AS '$libdir/rasterdb', 'test'
-        LANGUAGE 'c' IMMUTABLE STRICT;
 
 CREATE FUNCTION rasterdb_fdw_handler()
 RETURNS fdw_handler

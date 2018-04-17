@@ -7,8 +7,9 @@
 //#include "cpl_conv.h" /* for CPLMalloc() */
 #include "gdal_vrt.h"
 
-void analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf) {
+int analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf) {
     int i = 0;
+    int rows = 0;
     GDALDriverH drv = NULL;
     //STRINGBUFFER *buffer = NULL;
 
@@ -38,11 +39,12 @@ void analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **b
     //buffer->line = NULL;
 
     //process_rasters(config, buffer);
-    process_rasters(config, cur_linno, batchsize, buf);
+    rows = process_rasters(config, cur_linno, batchsize, buf);
     //rtdealloc_stringbuffer(buffer, 1);
     rtdealloc_config(config);
 
     elog(INFO, "<-----analysis_raster");
+    return rows;
 }
 
 /*

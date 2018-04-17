@@ -51,7 +51,7 @@ typedef struct rasterinfo_t {
 } RASTERINFO;
 
 //void analysis_raster(RTLOADERCFG *config);
-void analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf);
+int analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf);
 
 int append_stringbuffer(STRINGBUFFER *buffer, const char *str);
 void rtdealloc_stringbuffer(STRINGBUFFER *buffer, int freebuffer);
