@@ -116,8 +116,8 @@ rtdealloc(void * mem) {
 
 void
 rterror(const char *fmt, ...) {
-    elog(ERROR,"rterror");
-    va_list ap;
+	va_list ap;
+	elog(ERROR,"rterror");
 
     va_start(ap, fmt);
 

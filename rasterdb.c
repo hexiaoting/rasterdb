@@ -7,11 +7,13 @@
 #include "utils/builtins.h"
 #include "gdal.h"
 #include "cpl_conv.h"
-#include "access/heapam.h"
+#include "access/htup_details.h"
+#include "commands/defrem.h"
 #include "foreign/fdwapi.h"
 #include "foreign/foreign.h"
 #include "optimizer/cost.h"
 #include "optimizer/planmain.h"
+#include "optimizer/pathnode.h"
 #include "foreign/fdwapi.h"
 #include "optimizer/restrictinfo.h"
 #include "executor/executor.h"
@@ -100,7 +102,8 @@ rasterdb_fdw_handler(PG_FUNCTION_ARGS) {
 Datum
 rasterdb_fdw_validator(PG_FUNCTION_ARGS)
 {
-    
+	Datum res =BoolGetDatum(true);
+	return res;
 }
 
 static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
@@ -188,7 +191,7 @@ make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
             );
 
     MemoryContextSwitchTo(oldcontext);
-    tuple = heaptuple_form_to(tupledesc, values, nulls, NULL, NULL);
+    tuple = heap_form_tuple(tupledesc, values, nulls);
 
     MemoryContextReset(temp_context);
 
@@ -278,6 +281,7 @@ static void rasterdbGetForeignPaths(PlannerInfo *root,
                     &startup_cost, &total_cost);
 
     path = create_foreignscan_path(root, baserel,
+    								   NULL,
                                     baserel->rows,
                                     startup_cost,
                                     total_cost,
@@ -285,7 +289,7 @@ static void rasterdbGetForeignPaths(PlannerInfo *root,
                                     NULL,
                                     NULL,
                                     NIL);
-    add_path(baserel, path);
+    add_path(baserel, (Path *)path);
 }
 
 /*
@@ -337,7 +341,7 @@ rasterGetOption(Oid foreigntableid,
 	prev = lc;
     }
 
-    if (*location = NULL)
+    if (*location == NULL)
 	elog(ERROR, "location is required for rasterdb_fdw foreign tables");
 
     *other_options = options;
@@ -350,6 +354,7 @@ PG_FUNCTION_INFO_V1(load_raster);
 PG_FUNCTION_INFO_V1(test);
 Datum
 test(PG_FUNCTION_ARGS) {
+	Datum res = BoolGetDatum(true);
     GDALDriverH drv = NULL;
     char *str = PG_GETARG_CSTRING(0);
     CPLSetConfigOption( "GDAL_SKIP", "" );
@@ -361,13 +366,18 @@ test(PG_FUNCTION_ARGS) {
     } else {
         elog(INFO, "able to read raster file: %s", str);
     }
+
+    return res;
 }
 
 
 
 Datum
 load_raster(PG_FUNCTION_ARGS) {
+	Datum res = BoolGetDatum(true);
     const char *loadPath = text_to_cstring(PG_GETARG_TEXT_P(0));
+    // path is directory or regular file
+    struct stat s_buf;
 
     //S1: set config
     RTLOADERCFG *config = NULL;
@@ -380,9 +390,6 @@ load_raster(PG_FUNCTION_ARGS) {
     init_config(config);
     set_config(config);
     elog(INFO, "<---process config");
-
-    // path is directory or regular file
-    struct stat s_buf;  
   
     /*获取文件信息，把信息放到s_buf中*/  
     stat(loadPath,&s_buf);  
@@ -427,12 +434,17 @@ load_raster(PG_FUNCTION_ARGS) {
     //analysis_raster(config);
 //    return 6;
     //PG_RETURN_INT32(6);
+
+    return res;
 }
 
 static int
 GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, char **buf) {
-    ListCell *option;
+	ListCell *option;
     RTLOADERCFG *config = NULL;
+    // path is directory or regular file
+    struct stat s_buf;
+
 
 
     //S1: set config
@@ -442,9 +454,6 @@ GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, cha
     }
 
     init_config(config);
-
-    // path is directory or regular file
-    struct stat s_buf;  
   
     /*获取文件信息，把信息放到s_buf中*/  
     stat(location, &s_buf);  
@@ -498,4 +507,6 @@ GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, cha
     }
     //S3: analysis geotiff data to hexwkb
     analysis_raster(config, cur_lineno, batchsize, buf);
+
+    return 0;
 }
