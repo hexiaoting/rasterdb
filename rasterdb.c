@@ -38,6 +38,7 @@ typedef struct RasterdbFdwExecutionState {
     HeapTuple *tuples; /*array of currently-retrieved tuples*/
     AttInMetadata *attinmeta;
     int cur_lineno;
+    MemoryContext batch_context;
     MemoryContext temp_context;
 } RasterdbFdwExecutionState;
 
@@ -45,6 +46,13 @@ typedef struct RasterdbFdwExecutionState {
 void _PG_init(void);
 void _PG_fini(void);
 void _PG_init(void) {
+    const char* pszGDAL_SKIP = CPLGetConfigOption( "GDAL_SKIP", NULL );
+    if( pszGDAL_SKIP != NULL ) {
+        elog(DEBUG1, "rasterdb _PG_init(void)hwt: GDAL_SKIP set :%s", pszGDAL_SKIP);
+    } else {
+        elog(DEBUG1, "rasterdb _PG_init hwt: GDAL_SKIP not set");
+    }
+    CPLSetConfigOption( "GDAL_SKIP", "" );
 	elog(INFO, "create extension rasterdb");
 }
 void _PG_fini(void) {
@@ -131,6 +139,11 @@ static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
     festate->eof_reached = false;
     festate->tuples = NULL;
     festate->attinmeta = TupleDescGetAttInMetadata(RelationGetDescr(node->ss.ss_currentRelation));
+    festate->batch_context = AllocSetContextCreate(estate->es_query_cxt,
+            "rasterdb_fdw temporary data",
+            ALLOCSET_DEFAULT_MINSIZE,
+            ALLOCSET_DEFAULT_INITSIZE,
+            ALLOCSET_DEFAULT_MAXSIZE);
     festate->temp_context = AllocSetContextCreate(estate->es_query_cxt,
             "rasterdb_fdw temporary data",
             ALLOCSET_SMALL_MINSIZE,
@@ -144,8 +157,15 @@ fetch_more_data(ForeignScanState *node) {
     int batchsize = 100;
     int numrows = 0; // fetched rasterdb rows
     int i = 0;
-    char **buf = palloc0(sizeof(char *) * batchsize);
+    char **buf = NULL;
+    MemoryContext oldcontext;
+
     festate->tuples = NULL;
+
+    MemoryContextReset(festate->batch_context);
+    oldcontext = MemoryContextSwitchTo(festate->batch_context);
+
+    buf = palloc0(sizeof(char *) * batchsize);
 
     numrows = GetRasterBatch(festate->location, 
                             festate->options, 
@@ -159,6 +179,7 @@ fetch_more_data(ForeignScanState *node) {
             make_tuple_from_string(buf[i], node->ss.ss_currentRelation, 
                     festate->attinmeta,
                     festate->temp_context);
+        //elog(DEBUG1, "new tuple[%d]->data=%x",i, &(festate->tuples[i]->t_data));
         //TODO: memory leak????
         //pfree(buf[i]);
     }
@@ -168,6 +189,8 @@ fetch_more_data(ForeignScanState *node) {
     festate->next_tuple = 0;
     festate->num_tuples = numrows;
     festate->eof_reached = (numrows < batchsize);
+
+    MemoryContextSwitchTo(oldcontext);
 }
 
 static HeapTuple
@@ -195,7 +218,6 @@ make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
 
     MemoryContextSwitchTo(oldcontext);
     tuple = heap_form_tuple(tupledesc, values, nulls);
-
     MemoryContextReset(temp_context);
 
     return tuple;
@@ -204,6 +226,12 @@ make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
 static TupleTableSlot *rasterdbIterateForeignScan(ForeignScanState *node) {
     RasterdbFdwExecutionState *festate = (RasterdbFdwExecutionState *) node->fdw_state;
     TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
+    const char* pszGDAL_SKIP = CPLGetConfigOption( "GDAL_SKIP", NULL );
+    if( pszGDAL_SKIP != NULL ) {
+        elog(DEBUG1, "hwt----IterateForeignScan: GDAL_SKIP set='%s'", pszGDAL_SKIP);
+    } else {
+        elog(DEBUG1, "hwt----IteraeForeignScan: GDAL_SKIP not set");
+    }
 
     if (festate->next_tuple >= festate->num_tuples)
     {
@@ -213,6 +241,7 @@ static TupleTableSlot *rasterdbIterateForeignScan(ForeignScanState *node) {
             return ExecClearTuple(slot);
     }
 
+    //elog(DEBUG1, "Iterate return tuple->data=%x", (void *)(festate->tuples[festate->next_tuple]->t_data));
     ExecStoreTuple(festate->tuples[festate->next_tuple++],
             slot,
             InvalidBuffer,
@@ -364,7 +393,7 @@ load_raster(PG_FUNCTION_ARGS) {
     RTLOADERCFG *config = NULL;
 
     //S1: set config
-    config = malloc(sizeof(RTLOADERCFG));
+    config = rtalloc(sizeof(RTLOADERCFG));
     if (config == NULL) {
         exit(1);
     }
@@ -430,7 +459,7 @@ GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, cha
     struct stat s_buf;
 
     //S1: set config
-    config = malloc(sizeof(RTLOADERCFG));
+    config = rtalloc(sizeof(RTLOADERCFG));
     if (config == NULL) {
         exit(1);
     }
@@ -478,11 +507,11 @@ GetRasterBatch(char *location, List *options, int cur_lineno, int batchsize, cha
             char *tile = defGetString(defel);
             char *p = strchr(tile, 'x');
             if (p != NULL) {
-                char s1[5];
-                strncpy(s1, tile + 1, p - tile);
+                char s1[5] = {0};
+                strncpy(s1, tile, p - tile);
                 config->tile_size[0] = atoi(s1);
                 config->tile_size[1] = atoi(p + 1);
-                elog(INFO, "config->tile_size=%dx%d",config->tile_size[0],config->tile_size[1]);
+                elog(DEBUG1, "config->tile_size=%dx%d",config->tile_size[0],config->tile_size[1]);
             }
         }
         else {

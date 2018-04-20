@@ -55,49 +55,26 @@ int
 process_rasters(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf) {
     int i = 0;
     int lines = 0;
-    //create_table(config, buffer);
 
     /* process each raster */
     elog(INFO, "----->%s:%d", __FILE__, __LINE__);
     Assert(config->rt_file_count == 1);
     for (i = 0; i < config->rt_file_count; i++) {
-        //STRINGBUFFER tileset;
         RASTERINFO *rasterinfo = rtalloc(sizeof(RASTERINFO));
-        //char *filename = NULL;
 
         if(rasterinfo == NULL) {
             rterror("error");
             return 0;
         }
 
-        //tileset.length = 0;
-        //tileset.line = NULL;
 
         /* convert raster */
         //TODO: multi files
         lines += convert_raster(i, config, rasterinfo, cur_linno, batchsize, buf);
 
-        //if (!convert_raster(i, config, rasterinfo, &tileset, buffer)){
-        //    rtdealloc_stringbuffer(&tileset, 1);
-        //    return 0;
-        //}
-        //if(tileset.length) {
-        //    if(!insert_records(filename, config->schema,config->table,
-        //                   config->raster_column, config->rt_file[i],
-        //                   config->out_srid,
-        //                   &tileset, buffer)){
-        //        elog(ERROR,"insert_records failes");
-        //        rterror("err");
-        //        return 1;
-        //    }
-        //}
-
-        //rtdealloc_stringbuffer(&tileset, 0);
     }
     elog(INFO, "----->%s:%d", __FILE__, __LINE__);
     return lines;
-    //return 1;
-    
 }
 
 //int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, STRINGBUFFER *tileset, STRINGBUFFER *buffer) {
@@ -179,6 +156,19 @@ int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno
     for (i = 0; i < info->nband_count; i++)
         info->nband[i] = i + 1;
 
+    /* initialize parameters dependent on nband */
+	info->gdalbandtype = rtalloc(sizeof(GDALDataType) * info->nband_count);
+	if (info->gdalbandtype == NULL) {
+		rterror(_("convert_raster: Could not allocate memory for storing GDAL data type"));
+		GDALClose(hds);
+		return 0;
+	}
+	info->bandtype = rtalloc(sizeof(rt_pixtype) * info->nband_count);
+	if (info->bandtype == NULL) {
+		rterror(_("convert_raster: Could not allocate memory for storing pixel type"));
+		GDALClose(hds);
+		return 0;
+	}
     info->hasnodata = rtalloc(sizeof(int) * info->nband_count);
     if (info->hasnodata == NULL) {
 	    rterror(_("convert_raster: Could not allocate memory for storing hasnodata flag"));
@@ -191,6 +181,9 @@ int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno
 	    GDALClose(hds);
 	    return 0;
     }
+
+    memset(info->gdalbandtype, GDT_Unknown, sizeof(GDALDataType) * info->nband_count);
+	memset(info->bandtype, PT_END, sizeof(rt_pixtype) * info->nband_count);
     memset(info->hasnodata, 0, sizeof(int) * info->nband_count);
     memset(info->nodataval, 0, sizeof(double) * info->nband_count);
 
@@ -222,16 +215,13 @@ int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno
     //tilesize = info->tile_size[0] * info->tile_size[1];
 
     /* Process each band data type*/
-    elog(INFO, "process each band   %d",__LINE__);
     for (i = 0; i < info->nband_count; i++) {
         GDALRasterBandH rbh = GDALGetRasterBand(hds, info->nband[i]);
         info->gdalbandtype[i] = GDALGetRasterDataType(rbh);
         info->bandtype[i] = rt_util_gdal_datatype_to_pixtype(info->gdalbandtype[i]);
         
         /* hasnodata and nodataval*/
-        elog(INFO, "process each band   %d",__LINE__);
         info->nodataval[i] = GDALGetRasterNoDataValue(rbh, &(info->hasnodata[i]));
-        elog(INFO, "process each band   %d",__LINE__);
         if (!info->hasnodata[i]) {
             if(config->hasnodata) {
                 info->hasnodata[i] = 1;
@@ -240,7 +230,6 @@ int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno
                 info->nodataval[i] = 0;
             }
         }
-        elog(INFO, "process each band   %d",__LINE__);
     }
 
     elog(INFO, "INFO Process each tile %d",__LINE__);
@@ -330,84 +319,6 @@ int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno
     elog(INFO, "----->%s:%d", __FILE__, __LINE__);
     return processdno;
 }
-
-int create_table(RTLOADERCFG *config, STRINGBUFFER *buffer) {
-    char *create_sql = NULL;
-    int length = strlen("CREATE TABLE  (rid serial primary key, raster);") + 1;
-    elog(INFO, "----->%s:%d", __FILE__, __LINE__);
-    length += strlen(config->schema) + strlen(config->table) + strlen(config->raster_column);
-    if (config->file_column_name)
-        length += strlen(", text") + strlen(config->file_column_name);
-
-    create_sql = rtalloc(length * sizeof(char));
-    if (create_sql == NULL) {
-        rterror("err");
-        return 0;
-    }
-
-    sprintf(create_sql, "CREATE TABLE %s.%s(\"rid\" serial primary key, %s raster%s%s%s)",
-             config->schema,config->table,config->raster_column,
-             (config->file_column_name == NULL ? "" : ","),
-             (config->file_column_name == NULL ? "" : config->file_column_name),
-             (config->file_column_name == NULL ? "" : " text"));
-
-    append_stringbuffer(buffer, create_sql);
-    elog(INFO, "----->%s:%d", __FILE__, __LINE__);
-    return 1;
-}
-
-int insert_records(char *filename, char *schema, char *table, char *rast_column, char *file_column_name,
-                   int out_srid,
-                   STRINGBUFFER *tileset, STRINGBUFFER *buffer){
-    int i = 0;
-    int len = strlen("INSERT INTO  () VALUES (ST_Transform(''::raster,xxxxxxxxx));") + 1;
-    char *log_file = "/home/hewenting/casearth/rasterdb/datalog";
-    FILE *file = fopen(log_file, "w+");
-    if (file == NULL){
-        elog(ERROR, "open file %s failed.", log_file);
-    }
-
-    elog(INFO, "----->%s:%d", __FILE__, __LINE__);
-    for (i = 0; i < tileset->length; i++) {
-	int sqllen = len + strlen(tileset->line[i]);
-        char *ptr = NULL;
-        char *sql = rtalloc(sizeof(char) * sqllen);
-        if (sql == NULL) {
-	    elog(ERROR,"ine299");
-            rterror("err");
-            return 1;
-        }
-        ptr = sql;
-        ptr += sprintf(sql, "INSERT INTO %s.%s(%s%s%s) values(",
-                schema,table,
-                rast_column,
-                filename ? "," : "",
-                filename ? file_column_name : "");
-        if (out_srid != 0) {
-            ptr += sprintf(ptr, "ST_Transform(");
-        }
-        ptr += sprintf(ptr, "%s::raster", tileset->line[i]);
-        if (fputs(tileset->line[i], file) == EOF) {
-        //if (fwrite(tileset->line[i], sizeof(char), strlen(tileset->line[i]), file)  < strlen(tileset->line[i])) {
-            elog(ERROR, "file write failed. errno=%d",errno);
-        }
-        fputc('\n', file);
-        if (out_srid != 0) {
-            ptr += sprintf(ptr, ")");
-        }
-        if(filename != NULL) {
-            ptr += sprintf(ptr, ",%s",filename);
-        }
-        ptr += sprintf(ptr, ");");
-        append_stringbuffer(buffer, sql);
-        sql = NULL;
-    }
-    fclose(file);
-    elog(INFO, "----->%s:%d", __FILE__, __LINE__);
-    return 1;
-}
-
-
 
 int append_stringbuffer(STRINGBUFFER *buffer, const char *str) {
     buffer->length++;
