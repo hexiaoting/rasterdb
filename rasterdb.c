@@ -313,7 +313,6 @@ static void rasterdbGetForeignPaths(PlannerInfo *root,
                     &startup_cost, &total_cost);
 
     path = create_foreignscan_path(root, baserel,
-    								   NULL,
                                     baserel->rows,
                                     startup_cost,
                                     total_cost,
