@@ -12,14 +12,18 @@ init_config(RTLOADERCFG *config) {
     config->raster_column = "rast";
     config->file_column_name = "filename";
     config->srid = config->out_srid = 0;
+    config->batchsize = DEFAULT_BATCHSIZE;
     config->nband = NULL;
     config->nband_count = 0;
     memset(config->tile_size, 0, sizeof(int) * 2);
     config->pad_tile = 0;
     config->hasnodata = 0;
     config->nodataval = 0;
-//    config->hasnodata = 0;
-//    config->nodataval = 0;
+    config->location = rtalloc(LOCATION_MAXSIZE);
+    if (config->location == NULL) {
+        elog(ERROR, "alloc memory for config->location failed.");
+    }
+    memset(config->location, 0, sizeof(char) * LOCATION_MAXSIZE);
 //    config->transaction = 1;
 }
 
@@ -34,29 +38,48 @@ init_config(RTLOADERCFG *config) {
 //}
 
 void
-set_config(RTLOADERCFG *config) {
+set_config(RTLOADERCFG **config, char *conf_file) {
     int MAXSIZE=1024;
     char buf[MAXSIZE];
-    char *conf_file="/home/hewenting/casearth/rasterdb/etc/rasterdb.conf";
-    FILE *f = fopen(conf_file, "r");
+    FILE *f = NULL;
+
+    //S1: set config
+    *config = rtalloc(sizeof(RTLOADERCFG));
+    if (*config == NULL) {
+        exit(1);
+    }
+    init_config(*config);
+
+    if (conf_file == NULL)
+        conf_file="/home/hewenting/casearth/rasterdb/etc/rasterdb.conf";
+    f = fopen(conf_file, "r");
 
     if (f == NULL) {
         elog(ERROR, "open %s failed. errno=%s", conf_file, strerror(errno));
     }
     while (fgets(buf, MAXSIZE, f) != NULL) {
-        char *p = strchr(buf, ':');
-        if (p != NULL && strncmp(buf,"tile_size",strlen("tile_size")) == 0) {
+        char *p = strchr(buf, '=');
+        if (p == NULL) {
+            elog(INFO, "conf_file setting %s failed.", buf);
+        }
+        else if (strncmp(buf,"tile_size",strlen("tile_size")) == 0) {
             char *p2 = strchr(p, 'x');
             if (p2 != NULL) {
                 char s1[5];
                 strncpy(s1,p+1,p2-p);
-                config->tile_size[0] = atoi(s1);
-                config->tile_size[1] = atoi(p2+1);
-                elog(INFO, "config->tile_size=%dx%d",config->tile_size[0],config->tile_size[1]);
+                (*config)->tile_size[0] = atoi(s1);
+                (*config)->tile_size[1] = atoi(p2+1);
+                elog(INFO, "config->tile_size=%dx%d",(*config)->tile_size[0],(*config)->tile_size[1]);
             }
-            return;
+        } else if(strncmp(buf, "location", strlen("location")) == 0) {
+            strcpy((*config)->location, p + 1);
+            elog(INFO, "config->location = %s", (*config)->location);
+        } else if(strncmp(buf, "batchsize", strlen("batchsize")) == 0) {
+            (*config)->batchsize = atoi(p + 1);
+            elog(INFO, "config->batchsize= %d", (*config)->batchsize);
         }
     }
+    fclose(f);
 }
 
 void
@@ -87,6 +110,7 @@ rtdealloc_config(RTLOADERCFG *config) {
 //    }
     if (config->nband_count > 0 && config->nband != NULL)
         rtdealloc(config->nband);
+    rtdealloc(config->location);
 
     rtdealloc(config);
 }

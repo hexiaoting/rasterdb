@@ -10,17 +10,11 @@
 #include "postgres.h"
 #include "utils/builtins.h"
 
-void rterror(const char *fmt, ...);
-void rtinfo(const char *fmt, ...);
-void rtwarn(const char *fmt, ...);
-void rtdealloc(void * mem);
-void *rtrealloc(void * mem, size_t size);
-void *rtalloc(size_t size);
+extern void rterror(const char *fmt, ...);
+extern void rtinfo(const char *fmt, ...);
+extern void rtwarn(const char *fmt, ...);
+extern void rtdealloc(void * mem);
+extern void *rtrealloc(void * mem, size_t size);
+extern void *rtalloc(size_t size);
 
-void * default_rt_allocator(size_t size);
-void * default_rt_reallocator(void * mem, size_t size);
-void default_rt_deallocator(void * mem);
-void default_rt_error_handler(const char * fmt, va_list ap);
-void default_rt_warning_handler(const char * fmt, va_list ap);
-void default_rt_info_handler(const char * fmt, va_list ap);
 #endif //RASTERDB_RT_CONTEXT_H

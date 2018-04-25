@@ -7,41 +7,14 @@
 //#include "cpl_conv.h" /* for CPLMalloc() */
 #include "gdal_vrt.h"
 
-int analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf) {
-    int i = 0;
+int analysis_raster(char *filename, RTLOADERCFG *config, int cur_linno, char **buf) {
     int rows = 0;
-    GDALDriverH drv = NULL;
     //STRINGBUFFER *buffer = NULL;
 
     elog(INFO, "----->%s:%d", __FILE__, __LINE__);
-    GDALAllRegister();
-    /* check that GDAL recognizes all files */
-    for (i = 0; i < config->rt_file_count; i++) {
-        drv = GDALIdentifyDriver(config->rt_file[i], NULL);
-
-        if (drv == NULL) {
-            elog(INFO, "Unable to read raster file: %s", config->rt_file[i]);
-            rterror(("Unable to read raster file: %s"), config->rt_file[i]);
-            rtdealloc_config(config);
-            exit(1);
-        }
-    }
-
-    /* initialize string buffer */
-    //buffer = rtalloc(sizeof(STRINGBUFFER));
-    //if (buffer == NULL) {
-    //    rterror("Could not allocate memory for output string buffer");
-    //    rtdealloc_config(config);
-    //    exit(1);
-    //}
-
-    //buffer->length = 0;
-    //buffer->line = NULL;
 
     //process_rasters(config, buffer);
-    rows = process_rasters(config, cur_linno, batchsize, buf);
-    //rtdealloc_stringbuffer(buffer, 1);
-    rtdealloc_config(config);
+    rows = process_rasters(filename, config, cur_linno, buf);
 
     elog(INFO, "<-----analysis_raster");
     return rows;
@@ -52,33 +25,31 @@ int analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **bu
  */
 int
 //process_rasters(RTLOADERCFG *config, STRINGBUFFER *buffer) {
-process_rasters(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf) {
-    int i = 0;
+process_rasters(char *filename, RTLOADERCFG *config, int cur_linno, char **buf) {
     int lines = 0;
+    RASTERINFO *rasterinfo;
 
     /* process each raster */
     elog(INFO, "----->%s:%d", __FILE__, __LINE__);
-    Assert(config->rt_file_count == 1);
-    for (i = 0; i < config->rt_file_count; i++) {
-        RASTERINFO *rasterinfo = rtalloc(sizeof(RASTERINFO));
 
-        if(rasterinfo == NULL) {
-            rterror("error");
-            return 0;
-        }
-
-
-        /* convert raster */
-        //TODO: multi files
-        lines += convert_raster(i, config, rasterinfo, cur_linno, batchsize, buf);
-
+    rasterinfo = rtalloc(sizeof(RASTERINFO));
+    if(rasterinfo == NULL) {
+        rterror("error");
+        return 0;
     }
+    memset(rasterinfo, 0, sizeof(RASTERINFO));
+
+
+    /* convert raster */
+    //TODO: multi files
+    lines += convert_raster(filename, config, rasterinfo, cur_linno, buf);
+
     elog(INFO, "----->%s:%d", __FILE__, __LINE__);
     return lines;
 }
 
 //int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, STRINGBUFFER *tileset, STRINGBUFFER *buffer) {
-int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno, int batchsize, char **buf) {
+int convert_raster(char *filename, RTLOADERCFG *config, RASTERINFO *info, int cur_linno, char **buf) {
     GDALDatasetH hds;
     const char *proDefString = NULL;
     double gt[6] = {0.};
@@ -93,14 +64,15 @@ int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno
     int nbands = 0;
     VRTDatasetH tds;
     VRTSourcedRasterBandH tband;
+    int batchsize = config->batchsize;
     //int tilesize = 0;
 
     elog(INFO, "----->%s convert_raster:%d", __FILE__, __LINE__);
-    hds = GDALOpen(config->rt_file[idx], GA_ReadOnly);
+    hds = GDALOpen(filename, GA_ReadOnly);
     nbands = GDALGetRasterCount(hds);
     if (nbands != 1) {
         elog(ERROR, "ERROR----->%s:%d", __FILE__, __LINE__);
-        rterror(("Open raster file %s ,bandNum = %d"),config->rt_file[idx], nbands);
+        rterror(("Open raster file %s ,bandNum = %d"), filename, nbands);
         GDALClose(hds);
         return 0;
     }
@@ -134,7 +106,7 @@ int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno
 
     /* record geotransform metrix */
     if(GDALGetGeoTransform(hds, info->gt) != CE_None) {
-        rtinfo(("Using default geotransform matrix (0, 1, 0, 0, 0, -1) for raster: %s"), config->rt_file[idx]);
+        rtinfo(("Using default geotransform matrix (0, 1, 0, 0, 0, -1) for raster: %s"), filename);
         info->gt[0] = 0;
         info->gt[1] = 1;
         info->gt[2] = 0;

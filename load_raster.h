@@ -51,15 +51,17 @@ typedef struct rasterinfo_t {
 } RASTERINFO;
 
 //void analysis_raster(RTLOADERCFG *config);
-int analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf);
+//int analysis_raster(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf);
+int analysis_raster(char *filename, RTLOADERCFG *config, int cur_linno, char **buf);
 
 int append_stringbuffer(STRINGBUFFER *buffer, const char *str);
 void rtdealloc_stringbuffer(STRINGBUFFER *buffer, int freebuffer);
-int
-process_rasters(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf);
+//int process_rasters(RTLOADERCFG *config, int cur_linno, int batchsize, char **buf);
+int process_rasters(char *filename, RTLOADERCFG *config, int cur_linno, char **buf);
 //process_rasters(RTLOADERCFG *config, STRINGBUFFER *buffer);
 int create_table(RTLOADERCFG *config, STRINGBUFFER *buffer);
-int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno, int batchsize, char **buf);
+int convert_raster(char *filename, RTLOADERCFG *config, RASTERINFO *info, int cur_linno, char **buf);
+//int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, int cur_linno, int batchsize, char **buf);
 //int convert_raster(int idx, RTLOADERCFG *config, RASTERINFO *info, STRINGBUFFER *tileset, STRINGBUFFER *buffer);
 int insert_records(char *filename, char *schema, char *table, char *rast_column, char *file_column_name,
                    int out_srid,
