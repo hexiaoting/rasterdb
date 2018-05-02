@@ -71,8 +71,7 @@ int convert_raster(char *filename, RTLOADERCFG *config, RASTERINFO *info, int cu
     hds = GDALOpen(filename, GA_ReadOnly);
     nbands = GDALGetRasterCount(hds);
     if (nbands != 1) {
-        elog(ERROR, "ERROR----->%s:%d", __FILE__, __LINE__);
-        rterror(("Open raster file %s ,bandNum = %d"), filename, nbands);
+        elog(ERROR, "GDAL get file %s #nbands is not 1(%d)", filename, nbands);
         GDALClose(hds);
         return 0;
     }

@@ -58,7 +58,7 @@ void _PG_init(void) {
     } else {
         elog(DEBUG1, "rasterdb _PG_init hwt: GDAL_SKIP not set");
     }
-    //CPLSetConfigOption( "GDAL_SKIP", "" );
+    CPLSetConfigOption( "GDAL_SKIP", "" );
 	elog(INFO, "create extension rasterdb");
 }
 void _PG_fini(void) {
@@ -89,9 +89,9 @@ static void rasterdbEndForeignScan(ForeignScanState *node);
 //static bool rasterdbAnalyzeForeignTable(Relation relation,
 //	AcquireSampleRowsFunc *func,
 //	BlockNumber *totalpages);
-//static void
-//rasterGetOption(Oid foreigntableid,
-//	char **conf_file, List **other_options);
+static void
+rasterGetOption(Oid foreigntableid,
+	char **conf_file, List **other_options);
 static HeapTuple
 make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
         MemoryContext temp_context); 
@@ -124,19 +124,23 @@ rasterdb_fdw_validator(PG_FUNCTION_ARGS)
 }
 
 static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
-    //RasterdbFdwExecutionState *festate;
-    //RTLOADERCFG *config;
-    //struct stat s_buf;
-    //char *conf_file;
-    //List *options;
-    //char *location;
-    //EState *estate = node->ss.ps.state;
+    RasterdbFdwExecutionState *festate;
+    RTLOADERCFG *config;
+    struct stat s_buf;
+    char *conf_file;
+    List *options;
+    char *location;
+    EState *estate = node->ss.ps.state;
+    const char* pszGDAL_SKIP = CPLGetConfigOption( "GDAL_SKIP", NULL );
+    if( pszGDAL_SKIP != NULL ) {
+        elog(INFO, "hwt----BeginForeignScan: GDAL_SKIP set='%s'", pszGDAL_SKIP);
+    } else {
+        elog(INFO, "hwt----BeginForeignScan: GDAL_SKIP not set");
+    }
 
     if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
         return;
-    TupleDescGetAttInMetadata(RelationGetDescr(node->ss.ss_currentRelation));
 
-    /*
     festate = (RasterdbFdwExecutionState *)palloc0(sizeof(RasterdbFdwExecutionState));
     node->fdw_state = (void *)festate;
 
@@ -165,14 +169,15 @@ static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
             ALLOCSET_SMALL_MAXSIZE);
 
     //Set raster files
+    set_config(&(festate->config), festate->conf_file);
     config = festate->config;
-    set_config(&config, festate->conf_file);
     location = config->location;
     stat(location, &s_buf);  
 
     GDALAllRegister();
     //check that GDAL recognizes all files 
   
+    elog(INFO, "Begin***%d***fn_oid=%d", __LINE__,(festate->attinmeta->attinfuncs->fn_oid));
     if(S_ISREG(s_buf.st_mode)) { 
         if (GDALIdentifyDriver(location, NULL) == NULL) {
             elog(INFO, "Unable to read raster file: %s", location);
@@ -184,46 +189,71 @@ static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
             elog(ERROR, "Could not allocate memory for storing raster files");
         }
 
-        festate->rt_files[config->rt_file_count -1] = rtalloc(sizeof(char) * (strlen(location) + 1));
-        if (festate->rt_files[config->rt_file_count - 1] == NULL) {
+        festate->rt_files[festate->rt_file_count -1] = rtalloc(sizeof(char) * (strlen(location) + 1));
+        if (festate->rt_files[festate->rt_file_count - 1] == NULL) {
             rtdealloc_config(config);
             elog(ERROR, "Could not allocate memory for storing raster filename");
         }
     } else if (S_ISDIR(s_buf.st_mode)) {
+        int tmp_length= 0;
+        char filename[50];
         DIR *dir;
         struct dirent *entry;
         if ((dir = opendir(location)) != NULL) {
             // print all the files and directories within directory 
             while ((entry = readdir(dir)) != NULL) {
-                if (entry->d_type != DT_REG || (GDALIdentifyDriver(location, NULL) == NULL)) {
-                    elog(INFO, "Do not support sub-sub directory or GDAL identify failed:%s", entry->d_name);
+                if (strcmp(entry->d_name,  ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                    continue;
+                //if (entry->d_type != DT_REG) {
+                //    elog(INFO, "Do not support %s type %d", entry->d_name, entry->d_type);
+                //    continue;
+                //}
+                tmp_length = strlen(location) + strlen(entry->d_name) + 2;
+                memset(filename, 0, 50);
+                snprintf(filename,
+                        tmp_length,
+                        "%s/%s",
+                        location,
+                        entry->d_name);
+                if (GDALIdentifyDriver(filename, NULL) == NULL) {
+                    elog(INFO, "GDAL identify raster failed:%s", filename);
                     continue;
                 }
-                festate->rt_file_count++;
-                festate->rt_files = (char **) rtrealloc(config->rt_file, sizeof(char *) * config->rt_file_count);
+                festate->rt_files = (char **) rtrealloc(festate->rt_files, sizeof(char *) * (1 + festate->rt_file_count));
                 if (festate->rt_files == NULL) {
                     rtdealloc_config(config);
                     elog(ERROR, "Could not allocate memory for storing raster files");
                 }
 
-                festate->rt_files[config->rt_file_count - 1] = rtalloc(sizeof(char) * (strlen(entry->d_name) + 1));
-                if (festate->rt_files[config->rt_file_count - 1] == NULL) {
+                festate->rt_files[festate->rt_file_count] = rtalloc(sizeof(char) * (strlen(entry->d_name) + 1));
+                if (festate->rt_files[festate->rt_file_count] == NULL) {
                     rtdealloc_config(config);
                     elog(ERROR, "Could not allocate memory for storing raster filename");
                 }
-                closedir(dir);
+                strcpy(festate->rt_files[festate->rt_file_count], 
+                        filename);
+                festate->rt_file_count++;
+                elog(INFO, "add file %s", filename);
+            }
+            if(closedir(dir) == -1) {
+                elog(ERROR, "closedir failed. errno=%d ", errno);
             }
         } else {
             // could not open directory 
             elog(ERROR, "Cannot open dir:%s", location);
         }
+    } else {
+        elog(ERROR, "Location(%s) is not a file or directory !", location);
     }
-    */
+    if (festate->rt_file_count == 0) {
+        elog(INFO, "No file added to festate->rt_files");
+    }
 }
 
 static void
 fetch_more_data(ForeignScanState *node, bool nextfile) {
     RasterdbFdwExecutionState *festate = (RasterdbFdwExecutionState *) node->fdw_state;
+    AttInMetadata *attinmeta = festate->attinmeta;
     int batchsize = festate->config->batchsize;
     int numrows = 0; // fetched rasterdb rows
     int i = 0;
@@ -231,6 +261,7 @@ fetch_more_data(ForeignScanState *node, bool nextfile) {
     MemoryContext oldcontext;
     char *filename;
 
+    elog(INFO, "***%d***fn_addr=%d", __LINE__,(festate->attinmeta->attinfuncs->fn_oid));
     festate->tuples = NULL;
 
     MemoryContextReset(festate->batch_context);
@@ -242,6 +273,7 @@ fetch_more_data(ForeignScanState *node, bool nextfile) {
         festate->cur_fileno++;
     }
     filename = festate->rt_files[festate->cur_fileno];
+    elog(INFO, "fetch from file:%s", filename);
 
     numrows = analysis_raster(filename, festate->config, festate->cur_lineno, buf);
     //numrows = GetRasterBatch(festate->location, 
@@ -254,7 +286,7 @@ fetch_more_data(ForeignScanState *node, bool nextfile) {
     for (i = 0; i < numrows; i++) {
         festate->tuples[i] = 
             make_tuple_from_string(buf[i], node->ss.ss_currentRelation, 
-                    festate->attinmeta,
+                    attinmeta,
                     festate->temp_context);
         //elog(DEBUG1, "new tuple[%d]->data=%x",i, &(festate->tuples[i]->t_data));
         //TODO: memory leak????
@@ -306,15 +338,16 @@ static TupleTableSlot *rasterdbIterateForeignScan(ForeignScanState *node) {
     TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
     const char* pszGDAL_SKIP = CPLGetConfigOption( "GDAL_SKIP", NULL );
     if( pszGDAL_SKIP != NULL ) {
-        elog(DEBUG1, "hwt----IterateForeignScan: GDAL_SKIP set='%s'", pszGDAL_SKIP);
+        elog(INFO, "hwt----IterateForeignScan: GDAL_SKIP set='%s'", pszGDAL_SKIP);
     } else {
-        elog(DEBUG1, "hwt----IteraeForeignScan: GDAL_SKIP not set");
+        elog(INFO, "hwt----IteraeForeignScan: GDAL_SKIP not set");
     }
+    elog(INFO, "***%d***fn_addr=%d", __LINE__,(festate->attinmeta->attinfuncs->fn_oid));
 
     if (festate->next_tuple >= festate->num_tuples)
     {
         // Read current file
-        if (!festate->eof_curfile_reached) {
+        if (!festate->eof_curfile_reached && festate->rt_file_count) {
             fetch_more_data(node, false);
         }
         if(festate->eof_curfile_reached && festate->cur_fileno < festate->rt_file_count - 1) {
@@ -402,6 +435,7 @@ static void rasterdbGetForeignPaths(PlannerInfo *root,
                     &startup_cost, &total_cost);
 
     path = create_foreignscan_path(root, baserel,
+                                    NULL,
                                     baserel->rows,
                                     startup_cost,
                                     total_cost,
@@ -439,34 +473,34 @@ static ForeignScan *rasterdbGetForeignPlan(PlannerInfo *root,
             outer_plan);
 }
 
-//static void
-//rasterGetOption(Oid foreigntableid,
-//	char **conf_file, List **other_options)
-//{
-//    List       *options = NIL;
-//    ListCell   *lc, *prev;
-//    ForeignTable *table;
-//
-//    table = GetForeignTable(foreigntableid);
-//    options = list_concat(options, table->options);
-//
-//    *conf_file = NULL;
-//    prev = NULL;
-//    foreach(lc, options) {
-//        DefElem *def = (DefElem *)lfirst(lc);
-//        if (!strcmp(def->defname, "conf_file")) {
-//            *conf_file = defGetString(def);
-//            options = list_delete_cell(options, lc, prev);
-//            break;
-//        }
-//        prev = lc;
-//    }
-//
-//    if (*conf_file == NULL)
-//	    elog(ERROR, "conf_file is required for rasterdb_fdw foreign tables");
-//
-//    *other_options = options;
-//}
+static void
+rasterGetOption(Oid foreigntableid,
+	char **conf_file, List **other_options)
+{
+    List       *options = NIL;
+    ListCell   *lc, *prev;
+    ForeignTable *table;
+
+    table = GetForeignTable(foreigntableid);
+    options = list_concat(options, table->options);
+
+    *conf_file = NULL;
+    prev = NULL;
+    foreach(lc, options) {
+        DefElem *def = (DefElem *)lfirst(lc);
+        if (!strcmp(def->defname, "conf_file")) {
+            *conf_file = defGetString(def);
+            options = list_delete_cell(options, lc, prev);
+            break;
+        }
+        prev = lc;
+    }
+
+    if (*conf_file == NULL)
+	    elog(ERROR, "conf_file is required for rasterdb_fdw foreign tables");
+
+    *other_options = options;
+}
 
 
 

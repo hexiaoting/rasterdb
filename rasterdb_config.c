@@ -2,6 +2,7 @@
 // Created by 何文婷 on 18/3/22.
 //
 #include "rasterdb_config.h"
+#include <string.h>
 
 void
 init_config(RTLOADERCFG *config) {
@@ -57,6 +58,7 @@ set_config(RTLOADERCFG **config, char *conf_file) {
     if (f == NULL) {
         elog(ERROR, "open %s failed. errno=%s", conf_file, strerror(errno));
     }
+    memset(buf, 0, MAXSIZE);
     while (fgets(buf, MAXSIZE, f) != NULL) {
         char *p = strchr(buf, '=');
         if (p == NULL) {
@@ -72,7 +74,7 @@ set_config(RTLOADERCFG **config, char *conf_file) {
                 elog(INFO, "config->tile_size=%dx%d",(*config)->tile_size[0],(*config)->tile_size[1]);
             }
         } else if(strncmp(buf, "location", strlen("location")) == 0) {
-            strcpy((*config)->location, p + 1);
+            strncpy((*config)->location, p + 1, strlen(p + 1) - 1);
             elog(INFO, "config->location = %s", (*config)->location);
         } else if(strncmp(buf, "batchsize", strlen("batchsize")) == 0) {
             (*config)->batchsize = atoi(p + 1);
