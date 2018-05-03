@@ -177,7 +177,6 @@ static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
     GDALAllRegister();
     //check that GDAL recognizes all files 
   
-    elog(INFO, "Begin***%d***fn_oid=%d", __LINE__,(festate->attinmeta->attinfuncs->fn_oid));
     if(S_ISREG(s_buf.st_mode)) { 
         if (GDALIdentifyDriver(location, NULL) == NULL) {
             elog(INFO, "Unable to read raster file: %s", location);
@@ -202,12 +201,10 @@ static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
         if ((dir = opendir(location)) != NULL) {
             // print all the files and directories within directory 
             while ((entry = readdir(dir)) != NULL) {
-                if (strcmp(entry->d_name,  ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                if (entry->d_type != DT_REG && entry->d_type != DT_UNKNOWN) {
+                    elog(INFO, "Do not support %s type %d", entry->d_name, entry->d_type);
                     continue;
-                //if (entry->d_type != DT_REG) {
-                //    elog(INFO, "Do not support %s type %d", entry->d_name, entry->d_type);
-                //    continue;
-                //}
+                }
                 tmp_length = strlen(location) + strlen(entry->d_name) + 2;
                 memset(filename, 0, 50);
                 snprintf(filename,
@@ -225,7 +222,7 @@ static void rasterdbBeginForeignScan(ForeignScanState *node, int eflags) {
                     elog(ERROR, "Could not allocate memory for storing raster files");
                 }
 
-                festate->rt_files[festate->rt_file_count] = rtalloc(sizeof(char) * (strlen(entry->d_name) + 1));
+                festate->rt_files[festate->rt_file_count] = rtalloc(sizeof(char) * (tmp_length + 1));
                 if (festate->rt_files[festate->rt_file_count] == NULL) {
                     rtdealloc_config(config);
                     elog(ERROR, "Could not allocate memory for storing raster filename");
@@ -261,7 +258,6 @@ fetch_more_data(ForeignScanState *node, bool nextfile) {
     MemoryContext oldcontext;
     char *filename;
 
-    elog(INFO, "***%d***fn_addr=%d", __LINE__,(festate->attinmeta->attinfuncs->fn_oid));
     festate->tuples = NULL;
 
     MemoryContextReset(festate->batch_context);
@@ -273,7 +269,7 @@ fetch_more_data(ForeignScanState *node, bool nextfile) {
         festate->cur_fileno++;
     }
     filename = festate->rt_files[festate->cur_fileno];
-    elog(INFO, "fetch from file:%s", filename);
+    elog(INFO, "Processing file:%s", filename);
 
     numrows = analysis_raster(filename, festate->config, festate->cur_lineno, buf);
     //numrows = GetRasterBatch(festate->location, 
@@ -336,37 +332,33 @@ make_tuple_from_string(char *str, Relation rel, AttInMetadata *attinmeta,
 static TupleTableSlot *rasterdbIterateForeignScan(ForeignScanState *node) {
     RasterdbFdwExecutionState *festate = (RasterdbFdwExecutionState *) node->fdw_state;
     TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
-    const char* pszGDAL_SKIP = CPLGetConfigOption( "GDAL_SKIP", NULL );
-    if( pszGDAL_SKIP != NULL ) {
-        elog(INFO, "hwt----IterateForeignScan: GDAL_SKIP set='%s'", pszGDAL_SKIP);
-    } else {
-        elog(INFO, "hwt----IteraeForeignScan: GDAL_SKIP not set");
-    }
-    elog(INFO, "***%d***fn_addr=%d", __LINE__,(festate->attinmeta->attinfuncs->fn_oid));
-
-    if (festate->next_tuple >= festate->num_tuples)
-    {
-        // Read current file
-        if (!festate->eof_curfile_reached && festate->rt_file_count) {
-            fetch_more_data(node, false);
-        }
-        if(festate->eof_curfile_reached && festate->cur_fileno < festate->rt_file_count - 1) {
-            // Read next file
-            elog(INFO, "current file eof, read another %s", festate->rt_files[festate->cur_fileno + 1]);
-            fetch_more_data(node, true);
-        } else {
-            return ExecClearTuple(slot);
-        }
-    }
-    //if (festate->next_tuple >= festate->num_tuples)
-    //{
-    //    if (!festate->eof_reached)
-    //        fetch_more_data(node);
-    //    if (festate->next_tuple >= festate->num_tuples)
-    //        return ExecClearTuple(slot);
+    //const char* pszGDAL_SKIP = CPLGetConfigOption( "GDAL_SKIP", NULL );
+    //if( pszGDAL_SKIP != NULL ) {
+    //    elog(INFO, "hwt----IterateForeignScan: GDAL_SKIP set='%s'", pszGDAL_SKIP);
+    //} else {
+    //    elog(INFO, "hwt----IteraeForeignScan: GDAL_SKIP not set");
     //}
 
-    //elog(DEBUG1, "Iterate return tuple->data=%x", (void *)(festate->tuples[festate->next_tuple]->t_data));
+    //Current buf is consumed.
+    if (festate->next_tuple >= festate->num_tuples)
+    {
+        festate->num_tuples = 0;
+        // Read current file
+        if (!festate->eof_curfile_reached && festate->rt_file_count) {
+            elog(INFO, "read current file %s", festate->rt_files[festate->cur_fileno]);
+            fetch_more_data(node, false);
+        }
+        // If current file is already eof, then Read next file
+        if (festate->num_tuples == 0 && festate->eof_curfile_reached) {
+            if (festate->cur_fileno < festate->rt_file_count - 1) {
+                elog(INFO, "current file eof, read another %s", festate->rt_files[festate->cur_fileno + 1]);
+                fetch_more_data(node, true);
+            } else {
+                return ExecClearTuple(slot);
+            }
+        } 
+    }
+
     ExecStoreTuple(festate->tuples[festate->next_tuple++],
             slot,
             InvalidBuffer,
