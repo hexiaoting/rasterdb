@@ -5,12 +5,9 @@
 #ifndef RASTERDB_RASTERDB_CONFIG_H
 #define RASTERDB_RASTERDB_CONFIG_H
 
+#include <string.h>
 #include "rt_context.h"
 
-#include <string.h>
-
-
-#define CSEQUAL(a,b) (strcmp(a,b)==0)
 #define LOCATION_MAXSIZE 512
 // Each time fetch how many lines from raster file
 #define DEFAULT_BATCHSIZE 100
@@ -24,11 +21,8 @@ typedef struct raster_loader_config {
     int srid;
     /* SRID of output raster (reprojection) */
     int out_srid;
-    char *table;
-    char *raster_column;
     int nband_count;
     int pad_tile;
-    char *schema;
     char *file_column_name;
     int *nband;
     int hasnodata;
